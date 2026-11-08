@@ -1,0 +1,126 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:night_racer/game/game.dart';
+import 'package:night_racer/game/locations.dart';
+import 'package:night_racer/game/track.dart';
+import 'package:night_racer/main.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+void main() {
+  setUp(() => SharedPreferences.setMockInitialValues({}));
+
+  testWidgets('menu shows the title, switches place and starts a race', (tester) async {
+    await tester.pumpWidget(const NightRacerApp());
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.text('CARRIAGE\nRUSH'), findsOneWidget);
+    expect(find.text('HORSE RACE  •  by MYAMANI'), findsOneWidget);
+    expect(find.text('CASABLANCA'), findsOneWidget);
+    await tester.tap(find.byIcon(Icons.chevron_right_rounded));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.text('SAHARA'), findsOneWidget);
+    await tester.tap(find.text('RACE'));
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(find.text('BRAKE'), findsOneWidget);
+    expect(find.text('POSITION'), findsOneWidget);
+  });
+
+  test('every location builds a course with a finish line', () {
+    for (final loc in locations) {
+      final t = Track(loc);
+      expect(t.segments.length, greaterThan(Track.startSegment + t.raceSegments));
+      expect(t.segments.any((s) => s.finishLine), isTrue);
+    }
+  });
+
+  test('a full race: 10 cars, everyone moves, the player finishes with a place', () {
+    final g = Game()..startRace();
+    expect(g.racers.length, 10);
+    expect(g.placeOf(g.player), 10); // starts at the back of the grid
+    var steps = 0;
+    while (g.phase != Phase.finished && steps < 60 * 400) {
+      // simple autopilot: stay in the lane with the most room
+      double ahead(double lane) => [
+            ...g.racers.where((r) => !r.isPlayer).map((r) => (r.z, r.x)),
+            ...g.traffic.map((t) => (t.z, t.x)),
+          ].where((o) => (o.$2 - lane).abs() < 0.45 && o.$1 > g.player.z - 300).fold<double>(1e12, (m, o) => o.$1 < m ? o.$1 : m);
+      final best = Game.lanes.reduce((a, b) => ahead(a) >= ahead(b) ? a : b);
+      g.steerLeft = best < g.player.x - 0.1;
+      g.steerRight = best > g.player.x + 0.1;
+      g.update(1 / 60);
+      steps++;
+    }
+    expect(g.phase, Phase.finished);
+    expect(g.player.finishTime, isNotNull);
+    final rows = g.results();
+    expect(rows.length, 10);
+    expect(g.racers.where((r) => !r.isPlayer).every((r) => r.z > g.track.startZ), isTrue);
+    // ignore: avoid_print
+    print('finished ${g.placeOf(g.player)}/10 in ${formatTime(g.player.finishTime!)}');
+  });
+
+  test('countdown beeps, GO neighs, finishing plays the fanfare', () {
+    final g = Game()..startRace();
+    expect(g.sounds, contains(Sfx.beep));
+    g.sounds.clear();
+    for (var i = 0; i < 60 * 4; i++) {
+      g.update(1 / 60);
+    }
+    expect(g.sounds.where((s) => s == Sfx.beep).length, 2); // "2", "1"
+    expect(g.sounds, containsAll([Sfx.go, Sfx.neigh]));
+    g.player.z = g.track.finishZ - 10;
+    g.update(1 / 60);
+    expect(g.phase, Phase.finished);
+    expect(g.sounds, contains(Sfx.fanfare));
+  });
+
+  test('driving into a roadside rock or tree is a crash with debris', () {
+    // find a hittable prop on the Sahara course
+    final g = Game()
+      ..selectLocation(1)
+      ..startRace();
+    for (var i = 0; i < 60 * 4; i++) {
+      g.update(1 / 60);
+    }
+    final t = g.track;
+    final seg = t.segments.skip(200).firstWhere((s) => s.sprites.any((sp) =>
+        sp.kind == SpriteKind.prop && sp.offset.abs() < 1.8 && sp.prop != Prop.kasbah && sp.prop != Prop.building));
+    final prop = seg.sprites.firstWhere((sp) => sp.kind == SpriteKind.prop && sp.offset.abs() < 1.8);
+    g.player
+      ..z = seg.index * World.segmentLength
+      ..x = prop.offset
+      ..speed = World.maxSpeed * 0.8;
+    g.sounds.clear();
+    g.update(1 / 60);
+    expect(g.player.speed, lessThan(World.maxSpeed * 0.4));
+    expect(g.sounds.any((s) => s == Sfx.rock || s == Sfx.crash), isTrue);
+    expect(g.particles.length, greaterThan(10));
+  });
+
+  test('off-road kicks up dust and rumbles', () {
+    final g = Game()..startRace();
+    for (var i = 0; i < 60 * 4; i++) {
+      g.update(1 / 60);
+    }
+    // move to a stretch with nothing on the verge to hit
+    g.player
+      ..x = 1.2
+      ..speed = World.maxSpeed * 0.6;
+    g.particles.clear();
+    for (var i = 0; i < 20; i++) {
+      g.player.x = 1.2;
+      g.update(1 / 60);
+    }
+    expect(g.rumble, greaterThan(0.5));
+    expect(g.particles, isNotEmpty);
+  });
+
+  test('pole start (rewarded perk) puts you at the front of the grid', () {
+    final normal = Game()..startRace();
+    expect(normal.placeOf(normal.player), 10);
+    expect(normal.startedOnPole, isFalse);
+    final pole = Game()..startRace(pole: true);
+    expect(pole.placeOf(pole.player), 1);
+    expect(pole.startedOnPole, isTrue);
+    expect(pole.racers.length, 10);
+  });
+}
