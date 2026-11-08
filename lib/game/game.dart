@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'countries.dart';
 import 'locations.dart';
 import 'track.dart';
 
@@ -24,8 +25,10 @@ class Particle {
 }
 
 class Racer {
-  Racer(this.name, this.color, {this.isPlayer = false, this.topSpeed = World.maxSpeed});
+  Racer(this.name, this.color, {this.isPlayer = false, this.topSpeed = World.maxSpeed, this.country = ''});
   final String name;
+  final String country; // ISO code, for the flag
+  String get flag => country.isEmpty ? '' : flagOf(country);
   final int color;
   final bool isPlayer;
   double topSpeed;
@@ -60,7 +63,6 @@ class Game extends ChangeNotifier {
     _loadBests();
   }
 
-  static const rivalNames = ['YOUSSEF', 'SALMA', 'KARIM', 'NADIA', 'OMAR', 'LINA', 'HAMZA', 'RANIA', 'ADAM'];
   static const rivalColors = [
     0xFF3D8BFF, 0xFFFFC23D, 0xFF33D17A, 0xFFB86BFF, 0xFFEDEDED, 0xFFFF8A3D, 0xFF00C2C7, 0xFF8C5A3C, 0xFF6B7280,
   ];
@@ -88,6 +90,25 @@ class Game extends ChangeNotifier {
   bool startedOnPole = false;
   final Map<String, double> bestTimes = {};
   final Map<String, int> bestPlaces = {};
+
+  // player profile (asked for on first launch, editable from the menu)
+  String playerName = 'YOU';
+  String playerCountry = '';
+  bool hasProfile = false;
+  bool profileLoaded = false;
+
+  Future<void> setProfile(String name, String country) async {
+    playerName = name.trim().toUpperCase();
+    playerCountry = country;
+    hasProfile = true;
+    player = _newPlayer()..z = player.z;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('player_name', playerName);
+    await prefs.setString('player_country', playerCountry);
+  }
+
+  Racer _newPlayer() => Racer(playerName, playerColor, isPlayer: true, country: playerCountry);
 
   // input
   bool steerLeft = false, steerRight = false, braking = false;
@@ -124,6 +145,15 @@ class Game extends ChangeNotifier {
   Future<void> _loadBests() async {
     final prefs = await SharedPreferences.getInstance();
     muted = prefs.getBool('muted') ?? false;
+    final name = prefs.getString('player_name');
+    // a profile chosen during this session always wins over the stored one
+    if (!hasProfile && name != null && name.isNotEmpty) {
+      playerName = name;
+      playerCountry = prefs.getString('player_country') ?? '';
+      hasProfile = true;
+      if (phase == Phase.menu) player = _newPlayer()..z = player.z;
+    }
+    profileLoaded = true;
     for (final l in locations) {
       final t = prefs.getDouble('best_time_${l.id}');
       final p = prefs.getInt('best_place_${l.id}');
@@ -144,7 +174,7 @@ class Game extends ChangeNotifier {
   void selectLocation(int i) {
     locationIndex = i % locations.length;
     track = Track(location);
-    player = Racer('YOU', playerColor, isPlayer: true)..z = track.startZ;
+    player = _newPlayer()..z = track.startZ;
     racers = [];
     traffic = [];
     phase = Phase.menu;
@@ -155,12 +185,14 @@ class Game extends ChangeNotifier {
   /// [pole] puts you at the front of the grid instead of the back (the rewarded-ad perk).
   void startRace({bool pole = false}) {
     track = Track(location);
-    player = Racer('YOU', playerColor, isPlayer: true);
+    player = _newPlayer();
     racers = [];
-    for (var i = 0; i < rivalNames.length; i++) {
+    // nine rivals from around the world, a different mix every race
+    final pool = rivalPool.where((r) => r.$1 != playerName).toList()..shuffle(_rng);
+    for (var i = 0; i < 9; i++) {
       // rivals are not equal: the front of the grid is quicker
       final top = World.maxSpeed * (0.99 - i * 0.011 + _rng.nextDouble() * 0.02);
-      racers.add(Racer(rivalNames[i], rivalColors[i], topSpeed: top)
+      racers.add(Racer(pool[i].$1, rivalColors[i], topSpeed: top, country: pool[i].$2)
         ..coat = coats[i % coats.length]
         ..gait = _rng.nextDouble());
     }

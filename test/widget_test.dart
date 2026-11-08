@@ -9,19 +9,55 @@ import 'package:shared_preferences/shared_preferences.dart';
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
-  testWidgets('menu shows the title, switches place and starts a race', (tester) async {
+  testWidgets('first launch asks for a name and country, then the menu starts a race', (tester) async {
     await tester.pumpWidget(const NightRacerApp());
     await tester.pump(const Duration(milliseconds: 100));
+    // welcome card
+    expect(find.text('WELCOME, RACER!'), findsOneWidget);
+    await tester.enterText(find.byType(TextField), 'lucas');
+    await tester.pump();
+    // the country is pre-filled from the device region; open the picker to change it
+    await tester.tap(find.byIcon(Icons.expand_more_rounded));
+    await tester.pump(const Duration(milliseconds: 600)); // the scene behind keeps animating, so no pumpAndSettle
+    await tester.enterText(find.byType(TextField).last, 'brazil');
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.tap(find.text('Brazil'));
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.tap(find.text("LET'S RACE"));
+    await tester.pump(const Duration(milliseconds: 200));
+    // menu with the player's chip, no personal branding
+    expect(find.text('LUCAS'), findsOneWidget);
     expect(find.text('CARRIAGE\nRUSH'), findsOneWidget);
-    expect(find.text('HORSE RACE  •  by MYAMANI'), findsOneWidget);
-    expect(find.text('CASABLANCA'), findsOneWidget);
+    expect(find.textContaining('MYAMANI'), findsNothing);
+    expect(find.text('PARIS'), findsOneWidget);
     await tester.tap(find.byIcon(Icons.chevron_right_rounded));
     await tester.pump(const Duration(milliseconds: 100));
-    expect(find.text('SAHARA'), findsOneWidget);
+    expect(find.text('LONDON'), findsOneWidget);
     await tester.tap(find.text('RACE'));
     await tester.pump(const Duration(milliseconds: 500));
     expect(find.text('BRAKE'), findsOneWidget);
     expect(find.text('POSITION'), findsOneWidget);
+  });
+
+  test('profile is saved and rivals come from around the world', () async {
+    final g = Game();
+    await g.setProfile(' Amélie ', 'FR');
+    g.startRace();
+    expect(g.player.name, 'AMÉLIE');
+    expect(g.player.flag, '🇫🇷');
+    final rivals = g.racers.where((r) => !r.isPlayer).toList();
+    expect(rivals.length, 9);
+    expect(rivals.map((r) => r.name).toSet().length, 9); // no duplicates
+    expect(rivals.every((r) => r.flag.isNotEmpty), isTrue);
+    expect(rivals.map((r) => r.country).toSet().length, greaterThan(4)); // a real mix
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getString('player_name'), 'AMÉLIE');
+    expect(prefs.getString('player_country'), 'FR');
+  });
+
+  test('eight world courses, no personal branding', () {
+    expect(locations.length, 8);
+    expect(locations.map((l) => l.name), containsAll(['PARIS', 'LONDON', 'NEW YORK', 'TOKYO', 'DUBAI', 'SWISS ALPS', 'RIO', 'MARRAKECH']));
   });
 
   test('every location builds a course with a finish line', () {

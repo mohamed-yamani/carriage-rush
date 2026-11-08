@@ -5,6 +5,7 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 
 import '../ads/ads.dart';
+import '../game/countries.dart';
 import '../game/game.dart';
 import '../game/locations.dart';
 import '../game/painter3d.dart';
@@ -37,7 +38,10 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
       ..start();
     _sound.init();
     // consent + ads after the first frame, so the consent form has a screen to sit on
-    WidgetsBinding.instance.addPostFrameCallback((_) => Ads.instance.init());
+    // `--dart-define=NOADS=true` skips consent + ads entirely (clean store screenshots)
+    if (!const bool.fromEnvironment('NOADS')) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => Ads.instance.init());
+    }
     // `--dart-define=AUTOSTART=true [--dart-define=LOCATION=1]` jumps straight into a race (screenshots/testing)
     game.selectLocation(const int.fromEnvironment('LOCATION'));
     if (const bool.fromEnvironment('AUTOSTART')) game.startRace();
@@ -110,7 +114,7 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
               ListenableBuilder(
                 listenable: game,
                 builder: (context, _) => switch (game.phase) {
-                  Phase.menu => _Menu(game: game),
+                  Phase.menu => game.profileLoaded && !game.hasProfile ? _Welcome(game: game) : _Menu(game: game),
                   Phase.finished => _Results(game: game),
                   _ => _Hud(game: game),
                 },
@@ -132,7 +136,7 @@ const _gold = Color(0xFFFFD447);
 String ordinal(int n) => '$n${switch (n) { 1 => 'st', 2 => 'nd', 3 => 'rd', _ => 'th' }}';
 
 class _NameTitle extends StatelessWidget {
-  const _NameTitle({this.size = 64, this.text = 'MYAMANI'});
+  const _NameTitle({this.size = 64, this.text = 'CARRIAGE RUSH'});
   final double size;
   final String text;
 
@@ -188,7 +192,14 @@ class _Menu extends StatelessWidget {
       child: SafeArea(
         child: Column(
           children: [
-            Align(alignment: Alignment.topRight, child: _MuteButton(game: game)),
+            Row(
+              children: [
+                const SizedBox(width: 8),
+                _ProfileChip(game: game),
+                const Spacer(),
+                _MuteButton(game: game),
+              ],
+            ),
             const FittedBox(
               child: Padding(
                 padding: EdgeInsets.symmetric(horizontal: 24),
@@ -196,7 +207,7 @@ class _Menu extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 4),
-            const Text('HORSE RACE  •  by MYAMANI',
+            const Text('H O R S E   R A C E',
                 style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w700, letterSpacing: 2)),
             const Spacer(),
             Row(
@@ -214,10 +225,13 @@ class _Menu extends StatelessWidget {
                     padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 10),
                     child: Column(
                       children: [
-                        Text(loc.name,
-                            style: const TextStyle(
-                                color: Colors.white, fontSize: 30, fontWeight: FontWeight.w900, letterSpacing: 4)),
-                        Text(loc.subtitle, style: const TextStyle(color: Colors.white70, fontSize: 14)),
+                        FittedBox(
+                          child: Text(loc.name,
+                              style: const TextStyle(
+                                  color: Colors.white, fontSize: 30, fontWeight: FontWeight.w900, letterSpacing: 4)),
+                        ),
+                        Text('${flagOf(loc.country)}  ${loc.subtitle}',
+                            style: const TextStyle(color: Colors.white70, fontSize: 14)),
                         const SizedBox(height: 10),
                         Row(
                           mainAxisAlignment: MainAxisAlignment.center,
@@ -449,11 +463,6 @@ class _Hud extends StatelessWidget {
               ),
             ),
           ),
-          const Positioned(
-            right: 12,
-            bottom: 8,
-            child: Text('myamani', style: TextStyle(color: Colors.white38, fontSize: 11, letterSpacing: 1)),
-          ),
           if (const bool.fromEnvironment('SHOWFPS'))
             Positioned(
               left: 12,
@@ -463,6 +472,232 @@ class _Hud extends StatelessWidget {
                   style: const TextStyle(color: Colors.white70, fontSize: 11)),
             ),
         ],
+      ),
+    );
+  }
+}
+
+// ---------- player profile ----------
+/// Tappable "🇧🇷 LUCAS" chip on the menu that reopens the profile editor.
+class _ProfileChip extends StatelessWidget {
+  const _ProfileChip({required this.game});
+  final Game game;
+
+  @override
+  Widget build(BuildContext context) => ActionChip(
+        backgroundColor: Colors.black.withValues(alpha: 0.4),
+        side: const BorderSide(color: Colors.white24),
+        shape: const StadiumBorder(),
+        avatar: Text(game.player.flag.isEmpty ? '🏁' : game.player.flag, style: const TextStyle(fontSize: 16)),
+        label: Text(game.playerName,
+            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, letterSpacing: 1)),
+        onPressed: () {
+          game.sfx(Sfx.click);
+          showModalBottomSheet<void>(
+            context: context,
+            isScrollControlled: true,
+            backgroundColor: const Color(0xFF15122A),
+            shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+            builder: (context) => Padding(
+              padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+              child: _ProfileEditor(game: game, onSaved: () => Navigator.of(context).pop()),
+            ),
+          );
+        },
+      );
+}
+
+/// First launch: say hello and ask who is racing.
+class _Welcome extends StatelessWidget {
+  const _Welcome({required this.game});
+  final Game game;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        color: Colors.black.withValues(alpha: 0.55),
+        child: SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const FittedBox(child: _NameTitle(text: 'CARRIAGE\nRUSH', size: 52)),
+                  const SizedBox(height: 18),
+                  _Panel(
+                    padding: const EdgeInsets.fromLTRB(4, 8, 4, 4),
+                    child: _ProfileEditor(game: game, title: 'WELCOME, RACER!'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+}
+
+/// Name + country form, used on first launch and from the menu chip.
+class _ProfileEditor extends StatefulWidget {
+  const _ProfileEditor({required this.game, this.onSaved, this.title = 'YOUR RACER'});
+  final Game game;
+  final VoidCallback? onSaved;
+  final String title;
+
+  @override
+  State<_ProfileEditor> createState() => _ProfileEditorState();
+}
+
+class _ProfileEditorState extends State<_ProfileEditor> {
+  late final TextEditingController _name;
+  Country? _country;
+
+  @override
+  void initState() {
+    super.initState();
+    final g = widget.game;
+    _name = TextEditingController(text: g.hasProfile ? g.playerName : '');
+    // guess the country from the phone's region the first time
+    _country = countryByCode(g.playerCountry) ??
+        countryByCode(WidgetsBinding.instance.platformDispatcher.locale.countryCode);
+  }
+
+  @override
+  void dispose() {
+    _name.dispose();
+    super.dispose();
+  }
+
+  bool get _valid => _name.text.trim().length >= 2 && _country != null;
+
+  Future<void> _pickCountry() async {
+    final picked = await showModalBottomSheet<Country>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF15122A),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (context) => const _CountryPicker(),
+    );
+    if (picked != null) setState(() => _country = picked);
+  }
+
+  void _save() {
+    if (!_valid) return;
+    widget.game.sfx(Sfx.click);
+    widget.game.setProfile(_name.text, _country!.code);
+    widget.onSaved?.call();
+  }
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(widget.title,
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900, letterSpacing: 2)),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _name,
+              autofocus: !widget.game.hasProfile,
+              maxLength: 12,
+              textCapitalization: TextCapitalization.characters,
+              inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r"[\p{L}\p{N} ._'-]", unicode: true))],
+              style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w800, letterSpacing: 1),
+              decoration: const InputDecoration(
+                labelText: 'Your name',
+                filled: true,
+                fillColor: Colors.white10,
+                border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(12))),
+              ),
+              onChanged: (_) => setState(() {}),
+              onSubmitted: (_) => _save(),
+            ),
+            const SizedBox(height: 6),
+            OutlinedButton(
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 14),
+                side: const BorderSide(color: Colors.white38),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                alignment: Alignment.centerLeft,
+              ),
+              onPressed: _pickCountry,
+              child: Row(
+                children: [
+                  Text(_country?.flag ?? '🌍', style: const TextStyle(fontSize: 22)),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(_country?.name ?? 'Choose your country',
+                        style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600)),
+                  ),
+                  const Icon(Icons.expand_more_rounded, color: Colors.white70),
+                ],
+              ),
+            ),
+            const SizedBox(height: 18),
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: _neonPink,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                shape: const StadiumBorder(),
+              ),
+              onPressed: _valid ? _save : null,
+              child: const Text("LET'S RACE", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, letterSpacing: 2)),
+            ),
+          ],
+        ),
+      );
+}
+
+/// Searchable list of every country.
+class _CountryPicker extends StatefulWidget {
+  const _CountryPicker();
+
+  @override
+  State<_CountryPicker> createState() => _CountryPickerState();
+}
+
+class _CountryPickerState extends State<_CountryPicker> {
+  String _query = '';
+
+  @override
+  Widget build(BuildContext context) {
+    final q = _query.toLowerCase();
+    final list = countries.where((c) => q.isEmpty || c.name.toLowerCase().contains(q) || c.code.toLowerCase() == q).toList();
+    return SizedBox(
+      height: MediaQuery.sizeOf(context).height * 0.75,
+      child: Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+              child: TextField(
+                autofocus: true,
+                style: const TextStyle(color: Colors.white),
+                decoration: const InputDecoration(
+                  prefixIcon: Icon(Icons.search_rounded),
+                  hintText: 'Search country',
+                  filled: true,
+                  fillColor: Colors.white10,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(12))),
+                ),
+                onChanged: (v) => setState(() => _query = v),
+              ),
+            ),
+            Expanded(
+              child: ListView.builder(
+                itemCount: list.length,
+                itemBuilder: (context, i) => ListTile(
+                  leading: Text(list[i].flag, style: const TextStyle(fontSize: 26)),
+                  title: Text(list[i].name, style: const TextStyle(color: Colors.white)),
+                  onTap: () => Navigator.of(context).pop(list[i]),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -497,7 +732,7 @@ class _LeaderRow extends StatelessWidget {
                     style: const TextStyle(color: Colors.white60, fontSize: 12, fontWeight: FontWeight.w700))),
             Container(width: 8, height: 8, decoration: BoxDecoration(color: Color(racer.color), shape: BoxShape.circle)),
             const SizedBox(width: 6),
-            Text(racer.name,
+            Text('${racer.flag} ${racer.name}'.trim(),
                 style: TextStyle(
                     color: racer.isPlayer ? _gold : Colors.white,
                     fontSize: 12,
@@ -619,7 +854,7 @@ class _Results extends StatelessWidget {
                                   decoration: BoxDecoration(color: Color(rows[i].racer.color), shape: BoxShape.circle)),
                               const SizedBox(width: 8),
                               Expanded(
-                                child: Text(rows[i].racer.name,
+                                child: Text('${rows[i].racer.flag} ${rows[i].racer.name}'.trim(),
                                     style: TextStyle(
                                         color: Colors.white,
                                         fontWeight: rows[i].racer.isPlayer ? FontWeight.w900 : FontWeight.w600)),

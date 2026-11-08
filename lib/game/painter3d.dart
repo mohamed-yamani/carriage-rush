@@ -51,7 +51,7 @@ class RacePainter extends CustomPainter {
   /// The sign text is rasterised once; drawing glyphs through a perspective matrix would blow up
   /// the shared glyph atlas when the sign gets close and corrupt every other piece of text.
   static final ui.Image _bannerImage = () {
-    final tp = _label('MYAMANI', const Color(0xFFFFD447));
+    final tp = _label('CARRIAGE RUSH', const Color(0xFFFFD447));
     final rec = ui.PictureRecorder();
     tp.paint(Canvas(rec), Offset.zero);
     return rec.endRecording().toImageSync(tp.width.ceil(), tp.height.ceil());
@@ -474,7 +474,9 @@ class RacePainter extends CustomPainter {
                 final w = sp.width * 0.008, h = sp.height * 0.006;
                 final p = track.pose(z, side * (sp.offset.abs() + 1.5 + w / 2 / Geo.halfWidth));
                 if (!_visible(p.x, p.y + h / 2, p.z, h)) continue;
-                _emitMesh(Models.building[rng % 3], p.x, p.y, p.z, yaw: p.heading, sx: w, sy: h, sz: w);
+                _emitMesh(Models.building[rng % 3], p.x, p.y, p.z,
+                    yaw: p.heading, sx: w, sy: h, sz: w,
+                    body: _loc.buildingColor.toARGB32(), coat: _loc.windowColor.toARGB32());
               case Prop.kasbah:
                 final w = sp.width * 0.007, h = sp.height * 0.006;
                 final p = track.pose(z, side * (sp.offset.abs() + w / 2 / Geo.halfWidth));
@@ -553,7 +555,7 @@ class RacePainter extends CustomPainter {
       for (final r in game.racers) {
         if (r.isPlayer) continue;
         rig(Models.carriage, r.z, r.x, r.color, r.coat, r.gait, (r.targetX - r.x).clamp(-0.4, 0.4) * 0.35,
-            name: r.name);
+            name: '${r.flag} ${r.name}'.trim());
       }
       final p = game.player;
       rig(Models.carriage, playerZ, p.x, Game.playerColor, p.coat, p.gait, game.visualSteer * 0.16,
@@ -584,7 +586,7 @@ class RacePainter extends CustomPainter {
     _specials.add(_Special.glow(d - 0.5, s, radius * _f / d, color.withValues(alpha: color.a * (1 - d / 240))));
   }
 
-  /// MYAMANI on the sign gantry: the text is drawn through a perspective canvas transform onto the board.
+  /// The game's name on the sign gantry: the text is drawn through a perspective canvas transform onto the board.
   void _addBannerText(Pose p) {
     final tp = _bannerImage;
     final sh = math.sin(p.heading), ch = math.cos(p.heading);
@@ -739,13 +741,13 @@ class RacePainter extends CustomPainter {
   void _drawSkyline(Canvas canvas, double shift, double hz) {
     final r = math.Random(3);
     final body = Paint()..color = _loc.farA;
-    final win = Paint()..color = const Color(0xCCFFC861);
+    final win = Paint()..color = _loc.windowColor.withValues(alpha: 0.8);
     const period = 2400.0;
     var x = 0.0;
     final rects = <Rect>[];
     while (x < period) {
       final w = 14 + r.nextDouble() * 40;
-      final h = _h * (0.03 + r.nextDouble() * 0.11);
+      final h = _h * (0.03 + r.nextDouble() * 0.11) * _loc.skylineHeight;
       rects.add(Rect.fromLTWH(x, -h, w, h + 3));
       x += w;
     }

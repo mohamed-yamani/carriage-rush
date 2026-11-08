@@ -1,6 +1,6 @@
 # Publishing Carriage Rush: Horse Race on Google Play
 
-Store title: **Carriage Rush: Horse Race** · launcher label: **Carriage Rush** · developer name: **MYAMANI**
+Store title: **Carriage Rush: Horse Race** · launcher label: **Carriage Rush**
 Package: `com.myamani.carriagerush` (Android) · bundle ID `com.myamani.carriageRush` (iOS)
 
 ## Already done in the code
@@ -10,6 +10,7 @@ Package: `com.myamani.carriagerush` (Android) · bundle ID `com.myamani.carriage
 - Release shrinking rules (`android/app/proguard-rules.pro`) — without them the release build crashes at launch.
 - Release signing wired to `android/key.properties` (git-ignored).
 - App name "Carriage Rush", INTERNET permission, AdMob app ID placeholder.
+- Worldwide: player name + country on first launch, international rivals, 8 world courses.
 
 ## Monetisation note
 Google Play in-app purchases are not available to merchants in Morocco, so the game earns from AdMob only (AdMob pays out to Moroccan bank accounts once the balance reaches $100).

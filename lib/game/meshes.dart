@@ -346,7 +346,8 @@ class Models {
   /// Unit-ish tower block (1 x 1 x 1 at the base, scaled per instance) with lit-window patterns.
   static final List<Mesh> building = List.generate(3, (seed) {
     final m = Mesh();
-    m.box(0, 0.5, 0, 0.5, 0.5, 0.5, 0xFF1A1730, top: 0xFF221E3A);
+    // walls take the location's building colour (kBody), windows its window colour (kCoat)
+    m.box(0, 0.5, 0, 0.5, 0.5, 0.5, kBody, top: kBodyDark);
     final r = math.Random(seed * 31 + 7);
     for (final face in [-1, 1]) {
       for (var row = 0; row < 12; row++) {
@@ -354,7 +355,7 @@ class Models {
           if (r.nextDouble() > 0.35) continue;
           final y = 0.06 + row * 0.075, z = -0.36 + col * 0.24;
           // windows on the two faces that look along the road (±x)
-          m.box(face * 0.502, y, z, 0.002, 0.022, 0.06, 0xFFFFC861, flags: kEmissive | kDecal);
+          m.box(face * 0.502, y, z, 0.002, 0.022, 0.06, kCoat, flags: kEmissive | kDecal);
         }
       }
     }
