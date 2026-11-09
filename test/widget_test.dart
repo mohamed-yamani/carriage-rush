@@ -127,7 +127,8 @@ void main() {
       ..speed = World.maxSpeed * 0.8;
     g.sounds.clear();
     g.update(1 / 60);
-    expect(g.player.speed, lessThan(World.maxSpeed * 0.4));
+    // you keep only part of your speed (how much depends on the difficulty)
+    expect(g.player.speed, lessThan(World.maxSpeed * 0.8 * g.difficulty.hitKeep + 1));
     expect(g.sounds.any((s) => s == Sfx.rock || s == Sfx.crash), isTrue);
     expect(g.particles.length, greaterThan(10));
   });
@@ -158,5 +159,18 @@ void main() {
     expect(pole.placeOf(pole.player), 1);
     expect(pole.startedOnPole, isTrue);
     expect(pole.racers.length, 10);
+  });
+
+  test('difficulty: EASY by default, slower rivals than HARD, remembered', () async {
+    final g = Game();
+    expect(g.difficulty, Difficulty.easy);
+    g.startRace();
+    final easyTop = g.racers.where((r) => !r.isPlayer).map((r) => r.topSpeed).reduce((a, b) => a > b ? a : b);
+    await g.setDifficulty(Difficulty.hard);
+    g.startRace();
+    final hardTop = g.racers.where((r) => !r.isPlayer).map((r) => r.topSpeed).reduce((a, b) => a > b ? a : b);
+    expect(easyTop, lessThan(hardTop));
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getString('difficulty'), 'hard');
   });
 }

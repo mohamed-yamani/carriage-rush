@@ -268,7 +268,9 @@ class _Menu extends StatelessWidget {
                 ),
               ],
             ),
-            const SizedBox(height: 26),
+            const SizedBox(height: 14),
+            _DifficultyPicker(game: game),
+            const SizedBox(height: 16),
             Opacity(
               opacity: pulse,
               child: FilledButton(
@@ -475,6 +477,30 @@ class _Hud extends StatelessWidget {
       ),
     );
   }
+}
+
+/// EASY / NORMAL / HARD, remembered between launches.
+class _DifficultyPicker extends StatelessWidget {
+  const _DifficultyPicker({required this.game});
+  final Game game;
+
+  @override
+  Widget build(BuildContext context) => SegmentedButton<Difficulty>(
+        showSelectedIcon: false,
+        style: SegmentedButton.styleFrom(
+          foregroundColor: Colors.white70,
+          selectedForegroundColor: Colors.black,
+          selectedBackgroundColor: _gold,
+          backgroundColor: Colors.black.withValues(alpha: 0.4),
+          side: const BorderSide(color: Colors.white24),
+          textStyle: const TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1.5, fontSize: 13),
+        ),
+        segments: [
+          for (final d in Difficulty.values) ButtonSegment(value: d, label: Text(d.label)),
+        ],
+        selected: {game.difficulty},
+        onSelectionChanged: (s) => game.setDifficulty(s.first),
+      );
 }
 
 // ---------- player profile ----------
@@ -819,7 +845,7 @@ class _Results extends StatelessWidget {
                         fontSize: 40,
                         fontWeight: FontWeight.w900,
                         letterSpacing: 4)),
-                Text('${ordinal(place)} place  •  ${game.location.name}',
+                Text('${ordinal(place)} place  •  ${game.location.name}  •  ${game.difficulty.label}',
                     style: const TextStyle(color: Colors.white70, fontSize: 16, fontWeight: FontWeight.w700)),
                 if (game.newBest)
                   const Padding(

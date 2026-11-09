@@ -10,6 +10,22 @@ import 'track.dart';
 
 enum Phase { menu, countdown, racing, paused, finished }
 
+/// How hard the rivals push and how much a mistake costs.
+enum Difficulty {
+  easy('EASY', rivalPace: 0.85, traffic: 0.5, crashKeep: 0.6, hitKeep: 0.65, leaderBrake: 0.85),
+  normal('NORMAL', rivalPace: 0.95, traffic: 0.8, crashKeep: 0.4, hitKeep: 0.45, leaderBrake: 0.93),
+  hard('HARD', rivalPace: 0.99, traffic: 1.0, crashKeep: 0.3, hitKeep: 0.35, leaderBrake: 0.95);
+
+  const Difficulty(this.label,
+      {required this.rivalPace, required this.traffic, required this.crashKeep, required this.hitKeep, required this.leaderBrake});
+  final String label;
+  final double rivalPace; // fastest rival's top speed as a share of yours
+  final double traffic; // share of the slow carts left on the road
+  final double crashKeep; // speed you keep after hitting a cart
+  final double hitKeep; // speed you keep after hitting a rock/tree/lamp
+  final double leaderBrake; // how much rivals far ahead of you ease off
+}
+
 /// One-shot sounds the game asks for; the screen's sound engine plays them.
 enum Sfx { beep, go, neigh, crash, bump, rock, fanfare, click, whip }
 
@@ -117,6 +133,15 @@ class Game extends ChangeNotifier {
   final List<Sfx> sounds = []; // drained by the sound engine every frame
   final List<Particle> particles = [];
   bool muted = false;
+  Difficulty difficulty = Difficulty.easy;
+
+  Future<void> setDifficulty(Difficulty d) async {
+    difficulty = d;
+    sfx(Sfx.click);
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('difficulty', d.name);
+  }
   bool adShowing = false; // full-screen ad up: the game goes quiet
   double rumble = 0; // 0..1 off-road shaking
   double _hitCooldown = 0, _hapticTimer = 0;
@@ -145,6 +170,8 @@ class Game extends ChangeNotifier {
   Future<void> _loadBests() async {
     final prefs = await SharedPreferences.getInstance();
     muted = prefs.getBool('muted') ?? false;
+    final d = prefs.getString('difficulty');
+    difficulty = Difficulty.values.firstWhere((x) => x.name == d, orElse: () => difficulty);
     final name = prefs.getString('player_name');
     // a profile chosen during this session always wins over the stored one
     if (!hasProfile && name != null && name.isNotEmpty) {
@@ -191,7 +218,7 @@ class Game extends ChangeNotifier {
     final pool = rivalPool.where((r) => r.$1 != playerName).toList()..shuffle(_rng);
     for (var i = 0; i < 9; i++) {
       // rivals are not equal: the front of the grid is quicker
-      final top = World.maxSpeed * (0.99 - i * 0.011 + _rng.nextDouble() * 0.02);
+      final top = World.maxSpeed * (difficulty.rivalPace - i * 0.011 + _rng.nextDouble() * 0.02);
       racers.add(Racer(pool[i].$1, rivalColors[i], topSpeed: top, country: pool[i].$2)
         ..coat = coats[i % coats.length]
         ..gait = _rng.nextDouble());
@@ -215,7 +242,7 @@ class Game extends ChangeNotifier {
         ..finishTime = null;
     }
     traffic = [];
-    final count = location.traffic * 6;
+    final count = (location.traffic * 6 * difficulty.traffic).round();
     for (var i = 0; i < count; i++) {
       final z = track.startZ + World.segmentLength * 120 + _rng.nextDouble() * (track.raceLength - World.segmentLength * 150);
       traffic.add(TrafficCar(z, lanes[_rng.nextInt(3)], World.maxSpeed * (0.28 + _rng.nextDouble() * 0.12),
@@ -369,7 +396,7 @@ class Game extends ChangeNotifier {
     } else {
       // gentle rubber band so the pack stays around you
       final gap = (r.z - player.z) / seg;
-      if (gap > 40) desired *= 0.95;
+      if (gap > 40) desired *= difficulty.leaderBrake;
       if (gap < -40) desired *= 1.04;
       if (track.curveAt(r.z).abs() > 4) desired *= 0.96;
     }
@@ -446,7 +473,7 @@ class Game extends ChangeNotifier {
     for (final t in traffic) {
       for (final r in racers) {
         if ((t.z - r.z).abs() < seg * 1.6 && (t.x - r.x).abs() < 0.42) {
-          r.speed *= r.isPlayer ? 0.3 : 0.5;
+          r.speed *= r.isPlayer ? difficulty.crashKeep : 0.5;
           final hitZ = t.z;
           t.z += seg * 10; // knocked out of the way
           if (r.isPlayer) {
@@ -522,7 +549,7 @@ extension GameEffects on Game {
         final r = _propRadius(sp);
         if (r == null || (sp.offset - p.x).abs() > r + 0.16) continue;
         // smack: big slowdown, bounce back toward the road, debris
-        p.speed *= 0.35;
+        p.speed *= difficulty.hitKeep;
         p.x -= p.x.sign * 0.18;
         shake = 0.45;
         crashFlash = 0.3;
