@@ -558,7 +558,7 @@ class RacePainter extends CustomPainter {
             name: '${r.flag} ${r.name}'.trim());
       }
       final p = game.player;
-      rig(Models.carriage, playerZ, p.x, Game.playerColor, p.coat, p.gait, game.visualSteer * 0.16,
+      rig(Models.carriage, playerZ, p.x, p.color, p.coat, p.gait, game.visualSteer * 0.16,
           roll: game.visualSteer * 0.04, isYou: true);
     }
   }

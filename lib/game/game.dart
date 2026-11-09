@@ -124,7 +124,70 @@ class Game extends ChangeNotifier {
     await prefs.setString('player_country', playerCountry);
   }
 
-  Racer _newPlayer() => Racer(playerName, playerColor, isPlayer: true, country: playerCountry);
+  Racer _newPlayer() => Racer(playerName, paint, isPlayer: true, country: playerCountry)..coat = coat;
+
+  // ---------- progression: coins, starting position, garage ----------
+  int coins = 0;
+  int lastPlace = 10; // where you finished last time -> where you start next time
+  int raceCoins = 0, raceBonus = 0; // earned in the race that just finished
+  bool coinsDoubled = false;
+  int paint = playerColor, coat = 0xFFF2EEE6; // selected carriage paint and horse coat
+  final Set<String> owned = {'paint:$playerColor', 'coat:${0xFFF2EEE6}'};
+
+  /// Coins for each finishing place (index 0 = 1st).
+  static const prize = [100, 70, 50, 25, 25, 25, 10, 10, 10, 10];
+  static const firstWinBonus = 50;
+
+  /// Garage items: (colour, price). The first of each is free.
+  static const paintChoices = [
+    (playerColor, 0), (0xFF3D8BFF, 150), (0xFF33D17A, 150), (0xFFFFC23D, 200),
+    (0xFFB86BFF, 250), (0xFF111318, 300), (0xFFF4F1EA, 300), (0xFF00C2C7, 400),
+  ];
+  static const coatChoices = [
+    (0xFFF2EEE6, 0), (0xFF6B4226, 150), (0xFF2A2420, 200), (0xFF9C5B2E, 200), (0xFF8A8580, 250), (0xFFC9A36B, 350),
+  ];
+
+  bool ownsItem(String kind, int color) => owned.contains('$kind:$color');
+
+  /// Buy (if needed and affordable) and select a garage item. Returns false if you can't afford it.
+  Future<bool> chooseItem(String kind, int color, int price) async {
+    if (!ownsItem(kind, color)) {
+      if (coins < price) return false;
+      coins -= price;
+      owned.add('$kind:$color');
+    }
+    if (kind == 'paint') {
+      paint = color;
+    } else {
+      coat = color;
+    }
+    if (phase == Phase.menu) player = _newPlayer()..z = player.z;
+    sfx(Sfx.click);
+    notifyListeners();
+    await _saveProgress();
+    return true;
+  }
+
+  void doubleRaceCoins() {
+    if (coinsDoubled) return;
+    coinsDoubled = true;
+    coins += raceCoins + raceBonus;
+    sfx(Sfx.fanfare);
+    notifyListeners();
+    _saveProgress();
+  }
+
+  /// 🥇🥈🥉 for your best finish at a location, or '' before you've podiumed there.
+  String medalFor(String id) => switch (bestPlaces[id]) { 1 => '🥇', 2 => '🥈', 3 => '🥉', _ => '' };
+
+  Future<void> _saveProgress() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('coins', coins);
+    await prefs.setInt('last_place', lastPlace);
+    await prefs.setInt('paint', paint);
+    await prefs.setInt('coat', coat);
+    await prefs.setStringList('owned', owned.toList());
+  }
 
   // input
   bool steerLeft = false, steerRight = false, braking = false;
@@ -170,6 +233,11 @@ class Game extends ChangeNotifier {
   Future<void> _loadBests() async {
     final prefs = await SharedPreferences.getInstance();
     muted = prefs.getBool('muted') ?? false;
+    coins = prefs.getInt('coins') ?? coins;
+    lastPlace = prefs.getInt('last_place') ?? lastPlace;
+    paint = prefs.getInt('paint') ?? paint;
+    coat = prefs.getInt('coat') ?? coat;
+    owned.addAll(prefs.getStringList('owned') ?? const []);
     final d = prefs.getString('difficulty');
     difficulty = Difficulty.values.firstWhere((x) => x.name == d, orElse: () => difficulty);
     final name = prefs.getString('player_name');
@@ -210,6 +278,9 @@ class Game extends ChangeNotifier {
   }
 
   /// [pole] puts you at the front of the grid instead of the back (the rewarded-ad perk).
+  /// Grid slot you will start from (1 = front). Your last finish sets it; the rewarded ad sets it to 1.
+  int get startPosition => lastPlace.clamp(1, 10);
+
   void startRace({bool pole = false}) {
     track = Track(location);
     player = _newPlayer();
@@ -223,13 +294,12 @@ class Game extends ChangeNotifier {
         ..coat = coats[i % coats.length]
         ..gait = _rng.nextDouble());
     }
-    player.coat = 0xFFF2EEE6; // white horse, easy to spot from behind
-    if (pole) {
-      racers.insert(0, player);
-    } else {
-      racers.add(player);
-    }
-    startedOnPole = pole;
+    // you start where you finished last time (win -> pole); the rewarded ad always gives pole
+    final slot = pole ? 0 : startPosition - 1;
+    racers.insert(slot, player);
+    startedOnPole = slot == 0;
+    raceCoins = raceBonus = 0;
+    coinsDoubled = false;
     // two-wide grid behind the start line, player starts at the back (or on pole)
     for (var slot = 0; slot < racers.length; slot++) {
       final r = racers[slot];
@@ -510,8 +580,15 @@ class Game extends ChangeNotifier {
       bestTimes[id] = t;
       newBest = true;
     }
+    final firstWinHere = place == 1 && (bestPlaces[id] ?? 99) > 1;
     if (bestPlaces[id] == null || place < bestPlaces[id]!) bestPlaces[id] = place;
     _saveBests();
+    // rewards: coins for the place, a bonus for the first win in a city, and your grid slot for next time
+    raceCoins = prize[(place - 1).clamp(0, prize.length - 1)];
+    raceBonus = firstWinHere ? firstWinBonus : 0;
+    coins += raceCoins + raceBonus;
+    lastPlace = place;
+    _saveProgress();
   }
 }
 

@@ -190,12 +190,20 @@ class _Menu extends StatelessWidget {
     return Container(
       color: Colors.black.withValues(alpha: 0.25),
       child: SafeArea(
-        child: Column(
+        // fills tall screens (the Spacer pushes the title up), scrolls on short ones instead of overflowing
+        child: LayoutBuilder(
+          builder: (context, box) => SingleChildScrollView(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: box.maxHeight),
+              child: IntrinsicHeight(
+                child: Column(
           children: [
             Row(
               children: [
                 const SizedBox(width: 8),
                 _ProfileChip(game: game),
+                const SizedBox(width: 6),
+                _CoinChip(coins: game.coins),
                 const Spacer(),
                 _MuteButton(game: game),
               ],
@@ -252,7 +260,7 @@ class _Menu extends StatelessWidget {
                         Text(
                           bestTime == null
                               ? 'No record yet'
-                              : 'BEST  ${formatTime(bestTime)}   •   TOP ${ordinal(bestPlace ?? 10)}',
+                              : '${game.medalFor(loc.id)}  BEST  ${formatTime(bestTime)}   •   TOP ${ordinal(bestPlace ?? 10)}'.trim(),
                           style: const TextStyle(color: _gold, fontSize: 13, fontWeight: FontWeight.w700),
                         ),
                       ],
@@ -283,7 +291,19 @@ class _Menu extends StatelessWidget {
                 child: const Text('RACE', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, letterSpacing: 4)),
               ),
             ),
-            _PoleButton(game: game, label: 'Start from POLE'),
+            const SizedBox(height: 8),
+            Text(
+              game.startPosition == 1
+                  ? 'You start 1st — you won last race!'
+                  : 'You start ${ordinal(game.startPosition)} on the grid',
+              style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700),
+            ),
+            if (game.startPosition > 1) _PoleButton(game: game, label: 'Start from POLE'),
+            TextButton.icon(
+              onPressed: () => _openGarage(context, game),
+              icon: const Icon(Icons.storefront_rounded, color: _gold),
+              label: const Text('GARAGE', style: TextStyle(color: _gold, fontWeight: FontWeight.w900, letterSpacing: 2)),
+            ),
             const SizedBox(height: 6),
             const Text('You vs 9 rivals • start last, finish first\nHold left / right side to steer • BRAKE to slow',
                 textAlign: TextAlign.center, style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.5)),
@@ -298,6 +318,10 @@ class _Menu extends StatelessWidget {
             ),
             const BannerAdBox(),
           ],
+                ),
+              ),
+            ),
+          ),
         ),
       ),
     );
@@ -832,13 +856,17 @@ class _Results extends StatelessWidget {
     final winner = rows.first.time;
     return Container(
       color: Colors.black.withValues(alpha: 0.6),
-      child: SafeArea(
-        child: Center(
+      child: Stack(
+        children: [
+          if (place == 1) Positioned.fill(child: IgnorePointer(child: CustomPaint(painter: _Confetti(game.time)))),
+          SafeArea(
+            child: Center(
           child: SingleChildScrollView(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
+                if (place == 1) const Text('🏆', style: TextStyle(fontSize: 64)),
                 Text(place == 1 ? 'YOU WIN!' : 'FINISHED',
                     style: TextStyle(
                         color: place == 1 ? _gold : Colors.white,
@@ -847,6 +875,8 @@ class _Results extends StatelessWidget {
                         letterSpacing: 4)),
                 Text('${ordinal(place)} place  •  ${game.location.name}  •  ${game.difficulty.label}',
                     style: const TextStyle(color: Colors.white70, fontSize: 16, fontWeight: FontWeight.w700)),
+                const SizedBox(height: 10),
+                _CoinsEarned(game: game),
                 if (game.newBest)
                   const Padding(
                     padding: EdgeInsets.only(top: 6),
@@ -908,6 +938,13 @@ class _Results extends StatelessWidget {
                   child: const Text('RACE AGAIN',
                       style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, letterSpacing: 2)),
                 ),
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(
+                    place == 1 ? 'Next race you start on POLE' : 'Next race you start ${ordinal(place)}',
+                    style: const TextStyle(color: Colors.white70, fontWeight: FontWeight.w700),
+                  ),
+                ),
                 if (place > 1) _PoleButton(game: game, label: 'Retry from POLE'),
                 TextButton(
                   onPressed: () {
@@ -928,10 +965,197 @@ class _Results extends StatelessWidget {
               ],
             ),
           ),
-        ),
+            ),
+          ),
+        ],
       ),
     );
   }
+}
+
+// ---------- rewards ----------
+class _CoinChip extends StatelessWidget {
+  const _CoinChip({required this.coins});
+  final int coins;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.4),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: _gold.withValues(alpha: 0.6)),
+        ),
+        child: Text('🪙 $coins', style: const TextStyle(color: _gold, fontWeight: FontWeight.w900, fontSize: 15)),
+      );
+}
+
+/// "+100 🪙" for the place, the first-win bonus, and the rewarded "×2" offer.
+class _CoinsEarned extends StatelessWidget {
+  const _CoinsEarned({required this.game});
+  final Game game;
+
+  @override
+  Widget build(BuildContext context) {
+    final earned = game.raceCoins + game.raceBonus;
+    return _Panel(
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+      child: Column(
+        children: [
+          Text(game.coinsDoubled ? '+${earned * 2} 🪙  (doubled!)' : '+$earned 🪙',
+              style: const TextStyle(color: _gold, fontSize: 26, fontWeight: FontWeight.w900)),
+          if (game.raceBonus > 0)
+            Text('includes +${game.raceBonus} for your first win in ${game.location.name}!',
+                textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70, fontSize: 12)),
+          Text('Total: ${game.coins} 🪙', style: const TextStyle(color: Colors.white, fontSize: 13)),
+          if (!game.coinsDoubled && earned > 0)
+            ValueListenableBuilder(
+              valueListenable: Ads.instance.rewardedReady,
+              builder: (context, ready, _) => !ready
+                  ? const SizedBox.shrink()
+                  : Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: _gold,
+                          side: const BorderSide(color: _gold, width: 1.5),
+                          shape: const StadiumBorder(),
+                        ),
+                        onPressed: () {
+                          game.sfx(Sfx.click);
+                          Ads.instance.showRewarded(
+                            onShow: () => game.adShowing = true,
+                            onClose: () => game.adShowing = false,
+                            onReward: game.doubleRaceCoins,
+                          );
+                        },
+                        icon: const Icon(Icons.ondemand_video_rounded, size: 20),
+                        label: const Text('×2 COINS  •  watch ad',
+                            style: TextStyle(fontWeight: FontWeight.w800, letterSpacing: 1)),
+                      ),
+                    ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Falling confetti for a win, driven by the game clock.
+class _Confetti extends CustomPainter {
+  _Confetti(this.t);
+  final double t;
+  static const _colors = [Color(0xFFFFD447), Color(0xFFFF3D7F), Color(0xFF3D8BFF), Color(0xFF33D17A), Colors.white];
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final r = math.Random(7);
+    for (var i = 0; i < 90; i++) {
+      final speed = 60 + r.nextDouble() * 120;
+      final x0 = r.nextDouble() * size.width;
+      final phase = r.nextDouble() * 10;
+      final y = (r.nextDouble() * size.height + t * speed) % (size.height + 40) - 20;
+      final x = x0 + math.sin(t * 2 + phase) * 24;
+      canvas.save();
+      canvas.translate(x, y);
+      canvas.rotate(t * (2 + r.nextDouble() * 3) + phase);
+      canvas.drawRect(const Rect.fromLTWH(-5, -3, 10, 6), Paint()..color = _colors[i % _colors.length]);
+      canvas.restore();
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _Confetti old) => old.t != t;
+}
+
+// ---------- garage ----------
+void _openGarage(BuildContext context, Game game) {
+  game.sfx(Sfx.click);
+  showModalBottomSheet<void>(
+    context: context,
+    backgroundColor: const Color(0xFF15122A),
+    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+    builder: (context) => ListenableBuilder(listenable: game, builder: (context, _) => _Garage(game: game)),
+  );
+}
+
+class _Garage extends StatelessWidget {
+  const _Garage({required this.game});
+  final Game game;
+
+  Widget _row(BuildContext context, String title, String kind, List<(int, int)> items, int selected) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: const TextStyle(color: Colors.white70, fontWeight: FontWeight.w800, letterSpacing: 1.5)),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: [
+              for (final (color, price) in items)
+                GestureDetector(
+                  onTap: () async {
+                    final ok = await game.chooseItem(kind, color, price);
+                    if (!ok && context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                        content: Text('You need ${price - game.coins} more 🪙 — win races to earn them!'),
+                        duration: const Duration(seconds: 2),
+                      ));
+                    }
+                  },
+                  child: Column(
+                    children: [
+                      Container(
+                        width: 54,
+                        height: 54,
+                        decoration: BoxDecoration(
+                          color: Color(color),
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                              color: color == selected ? _gold : Colors.white24, width: color == selected ? 4 : 2),
+                        ),
+                        child: game.ownsItem(kind, color)
+                            ? (color == selected ? const Icon(Icons.check_rounded, color: Colors.black54) : null)
+                            : const Icon(Icons.lock_rounded, color: Colors.black45, size: 20),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(game.ownsItem(kind, color) ? (color == selected ? 'ON' : 'OWNED') : '🪙 $price',
+                          style: TextStyle(
+                              color: game.ownsItem(kind, color) ? Colors.white54 : _gold,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800)),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        ],
+      );
+
+  @override
+  Widget build(BuildContext context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  const Text('GARAGE',
+                      style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w900, letterSpacing: 2)),
+                  const Spacer(),
+                  _CoinChip(coins: game.coins),
+                ],
+              ),
+              const SizedBox(height: 18),
+              _row(context, 'CARRIAGE PAINT', 'paint', Game.paintChoices, game.paint),
+              const SizedBox(height: 20),
+              _row(context, 'HORSE', 'coat', Game.coatChoices, game.coat),
+            ],
+          ),
+        ),
+      );
 }
 
 /// Opt-in rewarded ad: watch it to the end and you start the race at the front of the grid.

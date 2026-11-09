@@ -173,4 +173,66 @@ void main() {
     final prefs = await SharedPreferences.getInstance();
     expect(prefs.getString('difficulty'), 'hard');
   });
+
+  /// Puts the player across the line in [place] (everyone else behind or ahead accordingly).
+  void finishIn(Game g, int place) {
+    for (var i = 0; i < 240; i++) {
+      g.update(1 / 60);
+    }
+    final rivals = g.racers.where((r) => !r.isPlayer).toList();
+    for (var i = 0; i < rivals.length; i++) {
+      rivals[i].z = i < place - 1 ? g.track.finishZ + 100 : g.track.startZ + 1000; // place-1 rivals already done
+      if (i < place - 1) rivals[i].finishTime = 0.001 * (i + 1); // crossed just before you
+    }
+    g.player.z = g.track.finishZ - 5;
+    g.update(1 / 60);
+  }
+
+  test('winning pays coins + first-win bonus and puts you on pole next race', () async {
+    final g = Game()..startRace();
+    expect(g.placeOf(g.player), 10); // first race: from the back
+    finishIn(g, 1);
+    expect(g.phase, Phase.finished);
+    expect(g.raceCoins, 100);
+    expect(g.raceBonus, Game.firstWinBonus);
+    expect(g.coins, 150);
+    expect(g.medalFor(g.location.id), '🥇');
+    g.startRace();
+    expect(g.placeOf(g.player), 1); // won last time -> start 1st
+    finishIn(g, 1);
+    expect(g.raceBonus, 0); // the bonus is only for the first win in a city
+    expect(g.coins, 250);
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getInt('coins'), 250);
+  });
+
+  test('finishing 5th starts you 5th; doubling coins works once', () {
+    final g = Game()..startRace();
+    finishIn(g, 5);
+    expect(g.raceCoins, 25);
+    g.doubleRaceCoins();
+    g.doubleRaceCoins();
+    expect(g.coins, 50);
+    g.startRace();
+    expect(g.placeOf(g.player), 5);
+    g.startRace(pole: true);
+    expect(g.placeOf(g.player), 1); // rewarded pole still wins
+  });
+
+  test('garage: buy with coins, select, and refuse when too poor', () async {
+    final g = Game()..coins = 200;
+    final (blue, bluePrice) = Game.paintChoices[1];
+    expect(await g.chooseItem('paint', blue, bluePrice), isTrue);
+    expect(g.coins, 200 - bluePrice);
+    expect(g.paint, blue);
+    expect(g.player.color, blue);
+    final (cyan, cyanPrice) = Game.paintChoices.last;
+    expect(await g.chooseItem('paint', cyan, cyanPrice), isFalse);
+    expect(g.paint, blue);
+    // owned items can be re-selected for free
+    final (red, _) = Game.paintChoices.first;
+    await g.chooseItem('paint', red, 0);
+    expect(await g.chooseItem('paint', blue, bluePrice), isTrue);
+    expect(g.coins, 200 - bluePrice);
+  });
 }
