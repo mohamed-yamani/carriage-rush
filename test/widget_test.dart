@@ -4,6 +4,7 @@ import 'package:night_racer/game/game.dart';
 import 'package:night_racer/game/locations.dart';
 import 'package:night_racer/game/track.dart';
 import 'package:night_racer/main.dart';
+import 'package:night_racer/screens/game_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -234,5 +235,47 @@ void main() {
     await g.chooseItem('paint', red, 0);
     expect(await g.chooseItem('paint', blue, bluePrice), isTrue);
     expect(g.coins, 200 - bluePrice);
+  });
+
+  test('regression: you stay 1st in the results when the pack crosses right behind you', () {
+    final g = Game()..startRace();
+    for (var i = 0; i < 240; i++) {
+      g.update(1 / 60);
+    }
+    for (final r in g.racers) {
+      if (!r.isPlayer) r.z = g.track.finishZ - 300;
+    }
+    g.player.z = g.track.finishZ - 5;
+    for (var i = 0; i < 60 * 8; i++) {
+      g.update(1 / 60); // let every rival cross the line
+    }
+    final rows = g.results();
+    expect(rows.first.racer.isPlayer, isTrue);
+    expect(rows[1].time, greaterThan(rows[0].time)); // real gaps, not "+0.00" ties
+    expect(g.lastPlace, 1);
+  });
+
+  testWidgets('after a win, RACE AGAIN is on screen and starts you 1st', (tester) async {
+    SharedPreferences.setMockInitialValues({'player_name': 'MOHAMED', 'player_country': 'MA'});
+    await tester.pumpWidget(const MaterialApp(home: GameScreen()));
+    await tester.pump(const Duration(milliseconds: 300));
+    final Game g = (tester.state(find.byType(GameScreen)) as dynamic).game;
+    await tester.tap(find.text('RACE'));
+    for (var i = 0; i < 90; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+    for (final r in g.racers) {
+      if (!r.isPlayer) r.z = g.track.startZ + 1000;
+    }
+    g.player.z = g.track.finishZ - 5;
+    for (var i = 0; i < 5; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+    expect(find.text('YOU WIN!'), findsOneWidget);
+    expect(find.text('Next race you start on POLE'), findsOneWidget);
+    await tester.tap(find.text('RACE AGAIN'), warnIfMissed: false);
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(g.phase, Phase.countdown); // the tap landed: a new race is starting
+    expect(g.placeOf(g.player), 1);
   });
 }

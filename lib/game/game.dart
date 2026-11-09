@@ -392,7 +392,9 @@ class Game extends ChangeNotifier {
       case Phase.paused:
         break;
       case Phase.racing || Phase.finished:
-        if (phase == Phase.racing) raceTime += dt;
+        // the clock keeps running after you cross the line, so rivals who finish behind you get their
+        // real (later) times instead of tying with yours and being sorted ahead of you
+        raceTime += dt;
         _updatePlayer(dt);
         for (final r in racers) {
           if (!r.isPlayer) _updateRival(r, dt);

@@ -866,7 +866,7 @@ class _Results extends StatelessWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                if (place == 1) const Text('🏆', style: TextStyle(fontSize: 64)),
+                if (place == 1) const Text('🏆', style: TextStyle(fontSize: 52)),
                 Text(place == 1 ? 'YOU WIN!' : 'FINISHED',
                     style: TextStyle(
                         color: place == 1 ? _gold : Colors.white,
@@ -875,15 +875,52 @@ class _Results extends StatelessWidget {
                         letterSpacing: 4)),
                 Text('${ordinal(place)} place  •  ${game.location.name}  •  ${game.difficulty.label}',
                     style: const TextStyle(color: Colors.white70, fontSize: 16, fontWeight: FontWeight.w700)),
-                const SizedBox(height: 10),
-                _CoinsEarned(game: game),
                 if (game.newBest)
                   const Padding(
-                    padding: EdgeInsets.only(top: 6),
+                    padding: EdgeInsets.only(top: 4),
                     child: Text('NEW BEST TIME!',
                         style: TextStyle(color: _neonPink, fontSize: 16, fontWeight: FontWeight.w900)),
                   ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 10),
+                _CoinsEarned(game: game),
+                // actions first, so they are on screen without scrolling; the full table follows
+                const SizedBox(height: 14),
+                FilledButton(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: _neonPink,
+                    padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 16),
+                    shape: const StadiumBorder(),
+                  ),
+                  onPressed: () => _startWithAd(game),
+                  child: const Text('RACE AGAIN',
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, letterSpacing: 2)),
+                ),
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Text(
+                    place == 1 ? 'Next race you start on POLE' : 'Next race you start ${ordinal(place)}',
+                    style: const TextStyle(color: Colors.white70, fontWeight: FontWeight.w700),
+                  ),
+                ),
+                if (place > 1) _PoleButton(game: game, label: 'Retry from POLE'),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    TextButton(
+                      onPressed: () {
+                        game.selectLocation(game.locationIndex + 1);
+                        _startWithAd(game);
+                      },
+                      child: Text('NEXT: ${locations[(game.locationIndex + 1) % locations.length].name}',
+                          style: const TextStyle(color: Colors.white, letterSpacing: 2, fontWeight: FontWeight.w700)),
+                    ),
+                    TextButton(
+                      onPressed: game.toMenu,
+                      child: const Text('MENU', style: TextStyle(color: Colors.white70, letterSpacing: 2)),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
                 _Panel(
                   child: Column(
                     children: [
@@ -927,39 +964,6 @@ class _Results extends StatelessWidget {
                     ],
                   ),
                 ),
-                const SizedBox(height: 22),
-                FilledButton(
-                  style: FilledButton.styleFrom(
-                    backgroundColor: _neonPink,
-                    padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 16),
-                    shape: const StadiumBorder(),
-                  ),
-                  onPressed: () => _startWithAd(game),
-                  child: const Text('RACE AGAIN',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, letterSpacing: 2)),
-                ),
-                Padding(
-                  padding: const EdgeInsets.only(top: 8),
-                  child: Text(
-                    place == 1 ? 'Next race you start on POLE' : 'Next race you start ${ordinal(place)}',
-                    style: const TextStyle(color: Colors.white70, fontWeight: FontWeight.w700),
-                  ),
-                ),
-                if (place > 1) _PoleButton(game: game, label: 'Retry from POLE'),
-                TextButton(
-                  onPressed: () {
-                    game.selectLocation(game.locationIndex + 1);
-                    _startWithAd(game);
-                  },
-                  child: Text('NEXT: ${locations[(game.locationIndex + 1) % locations.length].name}',
-                      style: const TextStyle(color: Colors.white, letterSpacing: 2, fontWeight: FontWeight.w700)),
-                ),
-                TextButton(
-                  onPressed: game.toMenu,
-                  child: const Text('MENU', style: TextStyle(color: Colors.white70, letterSpacing: 2)),
-                ),
-                const SizedBox(height: 8),
-                const _NameTitle(size: 22),
                 const SizedBox(height: 12),
                 const BannerAdBox(),
               ],
